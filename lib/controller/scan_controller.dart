@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:typed_data';
-import 'dart:math';
 
 import 'package:camera/camera.dart';
 import 'package:flutter_tflite/flutter_tflite.dart';
@@ -11,7 +10,6 @@ class ScanController extends GetxController {
   late CameraController cameraController;
   late List<CameraDescription> cameras;
   var isCameraInitialized = false.obs;
-  var cameraCount = 0;
   bool isProcessingFrame = false;
   final StreamController<CameraImage> _imageStreamController =
       StreamController<CameraImage>();
@@ -36,7 +34,8 @@ class ScanController extends GetxController {
       cameras = await availableCameras();
       cameraController = CameraController(
         cameras[0], // Use the first camera (front camera if available)
-        ResolutionPreset.max,
+        ResolutionPreset.high,
+        enableAudio: false,
       );
 
       await cameraController.initialize().then((_) {
@@ -45,20 +44,18 @@ class ScanController extends GetxController {
             _imageStreamController.add(image);
           }
         });
+
         _imageStreamController.stream.listen((image) {
           if (!isProcessingFrame) {
             isProcessingFrame = true;
-            cameraCount++;
-            if (cameraCount % 10 == 0) {
-              cameraCount = 0;
-              objectDetector(image);
-            } else {
-              isProcessingFrame = false;
-            }
+            objectDetector(image);
           }
         });
+
         isCameraInitialized.value = true;
         update();
+      }).catchError((e) {
+        print("Camera initialization error: $e");
       });
     } else {
       print("Camera permission denied");
@@ -66,13 +63,17 @@ class ScanController extends GetxController {
   }
 
   Future<void> initTFlite() async {
-    await Tflite.loadModel(
-      model: "assets/model.tflite",
-      labels: "assets/labels.txt",
-      isAsset: true,
-      numThreads: 1,
-      useGpuDelegate: false,
-    );
+    try {
+      await Tflite.loadModel(
+        model: "assets/model.tflite",
+        labels: "assets/labels.txt",
+        isAsset: true,
+        numThreads: 1,
+        useGpuDelegate: false,
+      );
+    } catch (e) {
+      print("Failed to load TFLite model: $e");
+    }
   }
 
   Future<void> objectDetector(CameraImage image) async {
@@ -93,7 +94,7 @@ class ScanController extends GetxController {
         print("Results: $results");
       }
     } catch (e) {
-      print("Error: $e");
+      print("Error during object detection: $e");
     } finally {
       isProcessingFrame = false;
     }
